@@ -1,0 +1,21 @@
+/** Default root categories to seed in Firestore. Product dropdown shows only these (no subcategories). */
+export const DEFAULT_ROOT_CATEGORIES: { name: string; slug: string; displayOrder: number }[] = [
+  { name: 'Grocery', slug: 'grocery', displayOrder: 1 },
+  { name: 'Home & Kitchen', slug: 'home-kitchen', displayOrder: 2 },
+  { name: 'Electronics & Appliances', slug: 'electronics-appliances', displayOrder: 3 },
+  { name: 'Books', slug: 'books', displayOrder: 4 },
+  { name: 'Office Products', slug: 'office-products', displayOrder: 5 },
+  { name: 'Automotive', slug: 'automotive', displayOrder: 6 },
+  { name: 'Industrial & Scientific', slug: 'industrial-scientific', displayOrder: 7 },
+  { name: 'Sports & Outdoors', slug: 'sports-outdoors', displayOrder: 8 },
+  { name: 'Toys & Games', slug: 'toys-games', displayOrder: 9 },
+  { name: 'Kids & Baby Products', slug: 'kids-baby-products', displayOrder: 10 },
+  { name: 'Musical Instruments', slug: 'musical-instruments', displayOrder: 11 },
+  { name: 'Shoes', slug: 'shoes', displayOrder: 12 },
+  { name: 'Phones & Accessories', slug: 'phones-accessories', displayOrder: 13 },
+  { name: 'Health & Beauty', slug: 'health-beauty', displayOrder: 14 },
+  { name: 'Computers & Accessories', slug: 'computers-accessories', displayOrder: 15 },
+  { name: 'Clothes', slug: 'clothes', displayOrder: 16 },
+  { name: 'Fashion Accessories', slug: 'fashion-accessories', displayOrder: 17 },
+  { name: 'Bags', slug: 'bags', displayOrder: 18 },
+]
