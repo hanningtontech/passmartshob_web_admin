@@ -51,7 +51,7 @@ export default function AdminOrders() {
         const list = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as Omit<FirestoreOrder, 'id'>),
-        }))
+        })) as (FirestoreOrder & { id: string })[]
         list.sort((a, b) => {
           const at = (a.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0
           const bt = (b.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0

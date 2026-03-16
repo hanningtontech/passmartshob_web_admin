@@ -11,8 +11,10 @@ import {
   LogOut,
   ChevronRight,
   ShoppingBag,
+  KeyRound,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import ChangePasswordModal from './ChangePasswordModal'
 
 interface AdminLayoutProps {
   children: ReactNode
@@ -30,6 +32,7 @@ const menuItems = [
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useAuth()
@@ -118,11 +121,19 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         <div className="border-t border-gray-700 p-4 space-y-3 shrink-0">
           {sidebarOpen && user && (
-            <div className="px-2 py-2">
+            <div className="px-2 py-2 space-y-2">
               <p className="text-xs text-gray-400">Logged in as</p>
               <p className="text-sm font-medium text-white truncate">
                 {user.name || user.email || 'Admin'}
               </p>
+              <button
+                type="button"
+                onClick={() => setChangePasswordOpen(true)}
+                className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors text-left"
+              >
+                <KeyRound size={18} />
+                <span className="text-sm font-medium">Change password</span>
+              </button>
             </div>
           )}
           <button
@@ -136,6 +147,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             {sidebarOpen && <span className="text-sm font-medium">Logout</span>}
           </button>
         </div>
+        {changePasswordOpen && user?.email && (
+          <ChangePasswordModal
+            userEmail={user.email}
+            onClose={() => setChangePasswordOpen(false)}
+          />
+        )}
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

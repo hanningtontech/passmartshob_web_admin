@@ -48,7 +48,7 @@ export default function OrderDetail() {
             id: snap.id,
             ...d,
             paymentStatus: normalizePaymentStatus(d.paymentStatus),
-          })
+          } as FirestoreOrder & { id: string })
         } else {
           setOrder(null)
         }
@@ -295,7 +295,7 @@ export default function OrderDetail() {
               <tbody className="text-gray-300 divide-y divide-gray-700">
                 {(order.items ?? []).map((item, idx) => (
                   <tr key={idx}>
-                    <td className="py-2 pr-4">{item.name ?? (item as Record<string, unknown>).productName ?? '—'}</td>
+                    <td className="py-2 pr-4">{item.name ?? (item as unknown as Record<string, unknown>).productName ?? '—'}</td>
                     <td className="text-right py-2 px-2">{item.quantity}</td>
                     <td className="text-right py-2 pl-2">{currency} {(item.price ?? 0).toFixed(2)}</td>
                   </tr>

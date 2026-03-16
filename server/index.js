@@ -24,9 +24,18 @@ const isConfigured =
   B2_BUCKET_NAME
 
 const app = express()
-// Allow browser requests from any origin (admin on localhost:5173, 5174, etc.)
+// Allow browser requests from admin (hosted + local) and any origin for flexibility
+const allowedOrigins = [
+  'https://passmartshop-admin.web.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+]
 app.use(cors({
-  origin: true,
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    return cb(null, true) // still allow other origins (e.g. custom domain admin)
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-File-Name'],
 }))
@@ -118,6 +127,14 @@ app.post('/api/b2-upload', express.raw({ type: () => true, limit: '25mb' }), asy
     console.error('B2 upload error:', err)
     res.status(500).json({ error: 'Upload to B2 failed', details: err.message })
   }
+})
+
+app.get('/', (_, res) => {
+  res.json({
+    service: 'B2 upload API',
+    health: '/api/health',
+    upload: 'POST /api/b2-upload',
+  })
 })
 
 app.get('/api/health', (_, res) => {

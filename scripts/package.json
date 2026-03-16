@@ -1,0 +1,8 @@
+{
+  "name": "set-admin-script",
+  "private": true,
+  "description": "One-time script to set role: 'admin' for a Firebase user (run from scripts folder)",
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

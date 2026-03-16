@@ -3,6 +3,11 @@ import {
   getAuth,
   onAuthStateChanged,
   getIdTokenResult,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   type User,
 } from 'firebase/auth'
 import {
@@ -35,7 +40,19 @@ export const db = getFirestore(app)
 export const storage = getStorage(app)
 export const now = serverTimestamp
 
-export { Timestamp, serverTimestamp, collection, doc, onAuthStateChanged, getIdTokenResult }
+export {
+  Timestamp,
+  serverTimestamp,
+  collection,
+  doc,
+  onAuthStateChanged,
+  getIdTokenResult,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+}
 export { query, where, orderBy } from 'firebase/firestore'
 export type { User }
 

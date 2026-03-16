@@ -10,13 +10,14 @@ import AdminProductTypes from './routes/admin/ProductTypes'
 import AdminImportExport from './routes/admin/ImportExport'
 import AdminOrders from './routes/admin/Orders'
 import AdminOrderDetail from './routes/admin/OrderDetail'
+import Login from './routes/Login'
 
 function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-right" theme="dark" richColors />
       <Routes>
-        <Route path="/login" element={<Navigate to="/admin" replace />} />
+        <Route path="/login" element={<Login />} />
         <Route element={<RequireAdmin />}>
           <Route path="/" element={<Navigate to="/admin" replace />} />
           <Route path="/admin" element={<AdminDashboard />} />

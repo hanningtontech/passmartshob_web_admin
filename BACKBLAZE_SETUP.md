@@ -101,6 +101,86 @@ Product data (name, price, category, etc.) is still saved in **Firebase Firestor
 
 ---
 
-## Deploying the B2 API
+## Host the B2 upload API (stop using it locally)
 
-For production, run the **server** somewhere that has your B2 env vars (e.g. Railway, Render, Fly.io, or a small VPS). Then set **VITE_B2_UPLOAD_API** in your admin build to that URL (e.g. `https://your-b2-api.example.com`). Do not expose **B2_APPLICATION_KEY** in the frontend.
+To use B2 uploads from the **deployed** admin (e.g. https://passmartshop-admin.web.app) without running the server on your machine, deploy the **server** to a cloud host and point the admin build at that URL.
+
+### Option A: Render (recommended – free tier, simple)
+
+1. **Push your repo** to GitHub (if not already).
+
+2. **Create a Web Service on Render**
+   - Go to [render.com](https://render.com) → Sign up / Log in.
+   - **Dashboard** → **New** → **Web Service**.
+   - Connect your GitHub account and select the **passmartshob_web_admin** repo (or the repo that contains the `server/` folder).
+
+3. **Configure the service**
+   - **Name:** e.g. `passmartshop-b2-upload`.
+   - **Region:** choose one close to you.
+   - **Root Directory:** set to **`server`** (so Render runs the Node app in `server/`).
+   - **Runtime:** Node.
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+   - **Instance type:** Free (or paid if you need no cold starts).
+
+4. **Environment variables** (Render → your service → **Environment**)
+   Add these (use **Secret** for keys):
+
+   | Key | Value |
+   |-----|--------|
+   | `B2_KEY_ID` | Your B2 Application Key ID |
+   | `B2_APPLICATION_KEY` | Your B2 Application Key (secret) |
+   | `B2_BUCKET_NAME` | Your bucket name (e.g. `passmartshop-media`) |
+   | `B2_REGION` | e.g. `us-west-004` |
+   | `B2_PUBLIC_URL_PREFIX` | (optional) Public URL base for images |
+   | `NODE_ENV` | `production` |
+
+   Do **not** set `PORT` – Render sets it automatically.
+
+5. **Deploy**
+   Click **Create Web Service**. Render will build and deploy. When it’s live, you’ll get a URL like **`https://passmartshop-b2-upload.onrender.com`**.
+
+6. **Point the admin at the hosted API**
+   - In the **admin app root** (where the Vite app lives), create or edit **`.env.production`**:
+     ```env
+     VITE_B2_UPLOAD_API=https://passmartshop-b2-upload.onrender.com
+     ```
+     Use your actual Render URL (no trailing slash).
+   - Rebuild and redeploy the admin:
+     ```bash
+     npm run build
+     firebase deploy --only hosting
+     ```
+   - The admin at https://passmartshop-admin.web.app will now use the hosted B2 API for uploads; you can stop running the server locally.
+
+**Render free tier note:** The service may sleep after inactivity; the first request after sleep can be slow (cold start). For always-on, use a paid instance.
+
+---
+
+### Option B: Railway
+
+1. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** → select your repo.
+2. Add a **service** and set **Root Directory** to `server`.
+3. **Variables:** Add `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, `B2_REGION` (and optional `B2_PUBLIC_URL_PREFIX`). Railway sets `PORT` automatically.
+4. Deploy; Railway gives you a URL like `https://your-app.up.railway.app`.
+5. Set **`.env.production`** in the admin root: `VITE_B2_UPLOAD_API=https://your-app.up.railway.app`, then rebuild and redeploy the admin.
+
+---
+
+### Option C: Fly.io or a VPS
+
+- **Fly.io:** Use `fly launch` in the `server/` directory and set secrets with `fly secrets set B2_KEY_ID=...` etc. Then use the deployed app URL as `VITE_B2_UPLOAD_API`.
+- **VPS (e.g. DigitalOcean, Linode):** Install Node, clone the repo, run the server with `pm2` or systemd, put it behind nginx with HTTPS. Use that URL as `VITE_B2_UPLOAD_API`.
+
+---
+
+### Summary
+
+| Step | What to do |
+|------|------------|
+| 1 | Deploy the **server** (e.g. Render) with B2 env vars; note the public URL. |
+| 2 | In admin root, set **`.env.production`** with `VITE_B2_UPLOAD_API=https://your-b2-api-url`. |
+| 3 | Run **`npm run build`** then **`firebase deploy --only hosting`** so the admin build bakes in that URL. |
+| 4 | Stop running the server locally; uploads from the live admin go to your hosted API → B2. |
+
+Never put **B2_APPLICATION_KEY** (or any B2 secret) in the frontend or in `VITE_*` – only in the server’s environment on the host.

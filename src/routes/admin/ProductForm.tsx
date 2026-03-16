@@ -272,7 +272,7 @@ export default function ProductForm() {
   const getChildrenOf = (parentId: string | null) =>
     allCategories.filter((c) => (c.parentId ?? null) === parentId)
 
-  const handleCategoryLevelChange = (levelIndex: number, value: string) => {
+  const handleCategoryLevelChange = (_levelIndex: number, value: string) => {
     setFormData((prev) => ({ ...prev, categoryId: value || '' }))
   }
 
@@ -1203,7 +1203,7 @@ export default function ProductForm() {
                           {pendingVariantFiles.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2 items-center">
                               <div className="flex gap-2 flex-wrap">
-                                {pendingVariantFiles.map((file, idx) => (
+                                {pendingVariantFiles.map((_file, idx) => (
                                   <div key={`v-pending-${idx}`} className="relative w-24 h-24 rounded border border-orange-600/50 overflow-hidden">
                                     <img src={pendingVariantPreviewUrls[idx]} alt="" className="w-full h-full object-cover" />
                                   </div>
