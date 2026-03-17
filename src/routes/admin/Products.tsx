@@ -17,6 +17,10 @@ type Product = {
   inStock: boolean
   featured: boolean
   images?: string[]
+  hasVariants?: boolean
+  subProducts?: {
+    images?: string[]
+  }[]
 }
 
 type Category = { id: string; name: string }
@@ -96,6 +100,18 @@ export default function AdminProducts() {
 
   const price = (p: Product) => p.basePrice ?? p.price ?? 0
 
+  const thumbnailForProduct = (p: Product): string | undefined => {
+    if (p.images && p.images.length > 0) return p.images[0]
+    if (p.hasVariants && Array.isArray(p.subProducts)) {
+      for (const sp of p.subProducts) {
+        if (sp?.images && sp.images.length > 0) {
+          return sp.images[0]
+        }
+      }
+    }
+    return undefined
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -170,8 +186,12 @@ export default function AdminProducts() {
                     <tr key={product.id} className="hover:bg-gray-700/80 transition">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {product.images && product.images.length > 0 ? (
-                            <img src={product.images[0]} alt={product.name} className="w-10 h-10 rounded object-cover" />
+                          {thumbnailForProduct(product) ? (
+                            <img
+                              src={thumbnailForProduct(product)}
+                              alt={product.name}
+                              className="w-10 h-10 rounded object-cover"
+                            />
                           ) : (
                             <div className="w-10 h-10 bg-gray-700 rounded" />
                           )}

@@ -135,6 +135,7 @@ export interface SubProduct {
   sku: string
   price: string
   stockCount: string
+  compareAtPrice?: string
   /** Per-variant images. When user selects this variant on the storefront, show these images. */
   images?: string[]
   /** Optional Markdown description for this variant (specs, notes). Shown when variant is selected. */
@@ -166,6 +167,7 @@ export default function ProductForm() {
     featured: false,
     inStock: true,
     localStock: true,
+    hasVariants: false,
     images: [] as string[],
     tags: [] as string[],
     flashSale: false,
@@ -185,12 +187,13 @@ export default function ProductForm() {
     sku: '',
     price: '',
     stockCount: '',
+    compareAtPrice: '',
     images: [],
     description: '',
   })
   /** Which variant is expanded for editing images/description (variant id or null). */
   const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null)
-  /** Pending file uploads per variant id (for the expanded variant only). */
+  /** Pending file uploads for the currently expanded variant only. */
   const [pendingVariantFiles, setPendingVariantFiles] = useState<File[]>([])
   /** URL input for adding variant image (for expanded variant). */
   const [variantImageUrl, setVariantImageUrl] = useState('')
@@ -226,8 +229,9 @@ export default function ProductForm() {
 
   const [pendingPreviewUrls, setPendingPreviewUrls] = useState<string[]>([])
   const pendingUrlsRef = useRef<string[]>([])
-  const [pendingVariantPreviewUrls, setPendingVariantPreviewUrls] = useState<string[]>([])
-  const pendingVariantUrlsRef = useRef<string[]>([])
+  const [variantPendingPreviewUrls, setVariantPendingPreviewUrls] = useState<string[]>([])
+  const variantPendingUrlsRef = useRef<string[]>([])
+  // Variant file-based previews are currently disabled; we keep state for compatibility but do not render previews.
   useEffect(() => {
     pendingUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
     const urls = pendingFiles.map((f) => URL.createObjectURL(f))
@@ -235,11 +239,12 @@ export default function ProductForm() {
     setPendingPreviewUrls(urls)
     return () => urls.forEach((u) => URL.revokeObjectURL(u))
   }, [pendingFiles])
+
   useEffect(() => {
-    pendingVariantUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+    variantPendingUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
     const urls = pendingVariantFiles.map((f) => URL.createObjectURL(f))
-    pendingVariantUrlsRef.current = urls
-    setPendingVariantPreviewUrls(urls)
+    variantPendingUrlsRef.current = urls
+    setVariantPendingPreviewUrls(urls)
     return () => urls.forEach((u) => URL.revokeObjectURL(u))
   }, [pendingVariantFiles])
 
@@ -281,7 +286,11 @@ export default function ProductForm() {
     if (isEdit) return
     const d = loadDraft()
     if (!d) return
-    setFormData(d.formData)
+    setFormData((prev) => ({
+      ...prev,
+      ...d.formData,
+      hasVariants: (d.formData as typeof prev & { hasVariants?: boolean }).hasVariants ?? (d.subProducts?.length ?? 0) > 0,
+    }))
     setSubProducts(d.subProducts)
     setNewSubProduct(d.newSubProduct)
     setIsDraftRestored(true)
@@ -333,6 +342,7 @@ export default function ProductForm() {
             localStock: (d.localStock as boolean) ?? true,
             images: (d.images as string[]) ?? [],
             tags: (d.tags as string[]) ?? [],
+            hasVariants: ((d.hasVariants as boolean) ?? false) || (Array.isArray(d.subProducts) && (d.subProducts as unknown[]).length > 0),
             flashSale: (d.flashSale as boolean) ?? false,
             flashSalePrice: d.flashSalePrice != null ? String(d.flashSalePrice as number) : '',
             flashSaleStartsAt: formatDateTimeForInput(d.flashSaleStartsAt),
@@ -344,11 +354,19 @@ export default function ProductForm() {
             reviews: Array.isArray(revs) ? revs.map((r) => ({ author: r.author ?? '', rating: Number(r.rating) ?? 0, comment: r.comment ?? '', date: r.date ?? '' })) : [],
           })
           const raw = (d.subProducts as SubProduct[] | undefined) ?? []
-            setSubProducts(raw.map((sp) => ({
+          setSubProducts(
+            raw.map((sp) => ({
               ...sp,
               images: Array.isArray(sp.images) ? sp.images : [],
               description: typeof sp.description === 'string' ? sp.description : '',
-            })))
+              compareAtPrice:
+                typeof (sp as any).compareAtPrice === 'string'
+                  ? (sp as any).compareAtPrice
+                  : (sp as any).compareAtPrice != null
+                  ? String((sp as any).compareAtPrice)
+                  : '',
+            }))
+          )
         }
       })
       .finally(() => setLoading(false))
@@ -494,8 +512,8 @@ export default function ProductForm() {
   }
 
   const handleAddSubProduct = () => {
-    if (!newSubProduct.name || !newSubProduct.sku || !newSubProduct.price) {
-      toast.error('Please fill in all sub-product fields')
+    if (!newSubProduct.name.trim()) {
+      toast.error('Please enter a variant name')
       return
     }
     setSubProducts((prev) => [
@@ -505,9 +523,10 @@ export default function ProductForm() {
         id: Date.now().toString(),
         images: newSubProduct.images ?? [],
         description: newSubProduct.description ?? '',
+        compareAtPrice: newSubProduct.compareAtPrice ?? '',
       },
     ])
-    setNewSubProduct({ id: '', name: '', sku: '', price: '', stockCount: '', images: [], description: '' })
+    setNewSubProduct({ id: '', name: '', sku: '', price: '', stockCount: '', compareAtPrice: '', images: [], description: '' })
     toast.success('Sub-product added')
   }
 
@@ -544,45 +563,68 @@ export default function ProductForm() {
   }
 
   const handleVariantFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!expandedVariantId) return
     const files = e.target.files
-    if (!files?.length) return
-    const sp = subProducts.find((s) => s.id === expandedVariantId)
-    const current = (sp?.images?.length ?? 0) + pendingVariantFiles.length
-    const toAdd = Math.min(MAX_VARIANT_IMAGES - current, files.length)
+    if (!files?.length || !expandedVariantId) return
+    const useB2 = isB2Configured
+    if (!useB2 && !isFirebaseConfigured) {
+      toast.error('Configure Backblaze B2 (VITE_B2_UPLOAD_API) or Firebase for image uploads')
+      e.target.value = ''
+      return
+    }
+    const currentVariant = subProducts.find((sp) => sp.id === expandedVariantId)
+    const existingCount = currentVariant?.images?.length ?? 0
+    const currentTotal = existingCount + pendingVariantFiles.length
+    const toAdd = Math.min(MAX_VARIANT_IMAGES - currentTotal, files.length)
     if (toAdd <= 0) {
       toast.error(`Maximum ${MAX_VARIANT_IMAGES} images per variant`)
       e.target.value = ''
       return
     }
-    setPendingVariantFiles((prev) => [...prev, ...Array.from(files).slice(0, toAdd)])
+    const newFiles = Array.from(files).slice(0, toAdd)
+    setPendingVariantFiles((prev) => [...prev, ...newFiles])
+    if (toAdd < files.length) {
+      toast.info(`Added ${toAdd} of ${files.length} (max ${MAX_VARIANT_IMAGES} total for this variant).`)
+    }
     e.target.value = ''
+  }
+
+  const removeVariantPending = (index: number) => {
+    setPendingVariantFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   const uploadVariantPending = async () => {
     if (!pendingVariantFiles.length || !expandedVariantId) return
     const useB2 = isB2Configured
-    if (!useB2 && !isFirebaseConfigured) return
+    if (!useB2 && !isFirebaseConfigured) {
+      toast.error('Configure Backblaze B2 (VITE_B2_UPLOAD_API) or Firebase for image uploads')
+      return
+    }
+    const currentVariant = subProducts.find((sp) => sp.id === expandedVariantId)
+    if (!currentVariant) return
     setUploading(true)
     try {
       const uploads = pendingVariantFiles.map((file) =>
-        useB2 ? uploadFileToB2(file) : (async () => {
-          const storageRef = ref(storage, `products/${id ?? 'new'}/variants/${expandedVariantId}/${crypto.randomUUID()}-${file.name}`)
-          const task = uploadBytesResumable(storageRef, file)
-          await new Promise<void>((resolve, reject) => {
-            task.on('state_changed', () => {}, reject, () => resolve())
-          })
-          return getDownloadURL(storageRef)
-        })()
+        useB2
+          ? uploadFileToB2(file)
+          : (async () => {
+              const storageRef = ref(
+                storage,
+                `products/${id ?? 'new'}/variants/${expandedVariantId}/${crypto.randomUUID()}-${file.name}`
+              )
+              const task = uploadBytesResumable(storageRef, file)
+              await new Promise<void>((resolve, reject) => {
+                task.on('state_changed', () => {}, reject, () => resolve())
+              })
+              return getDownloadURL(storageRef)
+            })()
       )
       const urls = await Promise.all(uploads)
-      const sp = subProducts.find((s) => s.id === expandedVariantId)
-      const images = [...(sp?.images ?? []), ...urls]
-      updateVariant(expandedVariantId, { images })
+      const existingImages = currentVariant.images ?? []
+      updateVariant(expandedVariantId, { images: [...existingImages, ...urls] })
       setPendingVariantFiles([])
-      toast.success(`${urls.length} image(s) added to variant`)
+      toast.success(`${urls.length} variant image(s) uploaded`)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed')
+      toast.error(err instanceof Error ? err.message : 'Variant upload failed')
     } finally {
       setUploading(false)
     }
@@ -632,7 +674,7 @@ export default function ProductForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name || !formData.categoryId || !formData.basePrice) {
+    if (!formData.name || !formData.categoryId || (!formData.basePrice && !formData.hasVariants)) {
       toast.error('Please fill in all required fields')
       return
     }
@@ -658,6 +700,7 @@ export default function ProductForm() {
         featured: formData.featured,
         inStock: formData.inStock,
         localStock: formData.localStock,
+        hasVariants: formData.hasVariants,
         images: formData.images,
         tags: formData.tags,
         subProducts,
@@ -709,6 +752,7 @@ export default function ProductForm() {
       featured: false,
       inStock: true,
       localStock: true,
+      hasVariants: false,
       images: [],
       tags: [],
       flashSale: false,
@@ -789,6 +833,25 @@ export default function ProductForm() {
                 className="admin-input"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="hasVariants"
+                  checked={formData.hasVariants}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
+                />
+                <span className="text-gray-300">This product has variants (description, price, stock & images are per variant)</span>
+              </label>
+            </div>
+            {formData.hasVariants && (
+              <p className="text-sm text-amber-300">
+                With variants on: product description, price/stock, and product images are hidden here. Set them per variant in the <strong>Product Variants</strong> section below.
+              </p>
+            )}
+            {!formData.hasVariants && (
+            <>
             <div>
               <label className={labelClass}>Description</label>
               <p className="text-xs text-gray-500 mb-2">
@@ -822,6 +885,8 @@ export default function ProductForm() {
                 className="admin-input"
               />
             </div>
+            </>
+            )}
             <div className="space-y-4">
               <p className="text-sm text-gray-400">
                 Products appear under the main category in the shop. The full category path is used for sorting and search.
@@ -878,42 +943,92 @@ export default function ProductForm() {
             </div>
           </div>
 
+          {!formData.hasVariants && (
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 space-y-4">
             <h2 className="text-lg font-semibold text-white">Pricing & Stock</h2>
+            <p className="text-xs text-gray-400">Pricing & stock apply to this whole product.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className={labelClass}>Price *</label>
-                <input type="number" name="basePrice" value={formData.basePrice} onChange={handleInputChange} placeholder="0.00" step="0.01" className="admin-input" />
+                <input
+                  type="number"
+                  name="basePrice"
+                  value={formData.basePrice}
+                  onChange={handleInputChange}
+                  placeholder="0.00"
+                  step="0.01"
+                  className="admin-input"
+                />
               </div>
               <div>
                 <label className={labelClass}>Compare at Price</label>
-                <input type="number" name="originalPrice" value={formData.originalPrice} onChange={handleInputChange} placeholder="0.00" step="0.01" className="admin-input" />
+                <input
+                  type="number"
+                  name="originalPrice"
+                  value={formData.originalPrice}
+                  onChange={handleInputChange}
+                  placeholder="0.00"
+                  step="0.01"
+                  className="admin-input"
+                />
               </div>
               <div>
                 <label className={labelClass}>Stock Quantity</label>
-                <input type="number" name="stockCount" value={formData.stockCount} onChange={handleInputChange} placeholder="0" className="admin-input" />
+                <input
+                  type="number"
+                  name="stockCount"
+                  value={formData.stockCount}
+                  onChange={handleInputChange}
+                  placeholder="0"
+                  className="admin-input"
+                />
               </div>
             </div>
             <div className="flex flex-wrap gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="isNew" checked={formData.isNew} onChange={handleInputChange} className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" />
+                <input
+                  type="checkbox"
+                  name="isNew"
+                  checked={formData.isNew}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
+                />
                 <span className="text-gray-300">Mark as New</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="featured" checked={formData.featured} onChange={handleInputChange} className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" />
+                <input
+                  type="checkbox"
+                  name="featured"
+                  checked={formData.featured}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
+                />
                 <span className="text-gray-300">Featured Product</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="inStock" checked={formData.inStock} onChange={handleInputChange} className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" />
+                <input
+                  type="checkbox"
+                  name="inStock"
+                  checked={formData.inStock}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
+                />
                 <span className="text-gray-300">In Stock</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="localStock" checked={formData.localStock} onChange={handleInputChange} className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" />
+                <input
+                  type="checkbox"
+                  name="localStock"
+                  checked={formData.localStock}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 rounded border-gray-500 bg-gray-700 accent-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
+                />
                 <span className="text-gray-300">Local stock</span>
               </label>
             </div>
             <p className="text-xs text-gray-500">Local stock = green “Local Stock” badge in shop; unchecked = “Ships from Overseas”.</p>
           </div>
+          )}
 
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 space-y-4">
             <h2 className="text-lg font-semibold text-white">Flash sale & social proof</h2>
@@ -958,14 +1073,26 @@ export default function ProductForm() {
             <p className="text-xs text-gray-500">Optional. Shown on product cards and detail (stars, “X sold”, etc.).</p>
           </div>
 
+          {!formData.hasVariants && (
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 space-y-4">
             <h2 className="text-lg font-semibold text-white">Product Images</h2>
             <p className="text-sm text-gray-400">
-              Up to {MAX_IMAGES} images per product. Drag to reorder — the <strong>first image</strong> is used as the thumbnail in the shop. Remove with × before or after uploading.
+              Up to {MAX_IMAGES} images per product. Drag to reorder — the <strong>first image</strong> is used as the thumbnail in the shop.
             </p>
             <div className="flex gap-2">
-              <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Or enter image URL" className="admin-input flex-1" />
-              <Button type="button" onClick={handleAddImage} disabled={formData.images.length >= MAX_IMAGES} className="bg-orange-600 hover:bg-orange-700 text-white shrink-0">
+              <input
+                type="text"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="Or enter image URL"
+                className="admin-input flex-1"
+              />
+              <Button
+                type="button"
+                onClick={handleAddImage}
+                disabled={formData.images.length >= MAX_IMAGES}
+                className="bg-orange-600 hover:bg-orange-700 text-white shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add URL
               </Button>
@@ -982,7 +1109,9 @@ export default function ProductForm() {
                 disabled={!canAddMore}
                 className="block w-full text-sm text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-600 file:px-4 file:py-2 file:text-white file:cursor-pointer disabled:opacity-50"
               />
-              {!canAddMore && <p className="text-sm text-amber-400 mt-1">Maximum {MAX_IMAGES} images reached. Remove one to add more.</p>}
+              {!canAddMore && (
+                <p className="text-sm text-amber-400 mt-1">Maximum {MAX_IMAGES} images reached. Remove one to add more.</p>
+              )}
             </div>
             {pendingFiles.length > 0 && (
               <div className="space-y-2">
@@ -1056,6 +1185,7 @@ export default function ProductForm() {
               </div>
             )}
           </div>
+          )}
 
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 space-y-4">
             <h2 className="text-lg font-semibold text-white">Specifications & reviews</h2>
@@ -1129,14 +1259,23 @@ export default function ProductForm() {
           </div>
 
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 space-y-4">
-            <h2 className="text-lg font-semibold text-white">Product Variants (Optional)</h2>
-            <p className="text-sm text-gray-400">
-              Each variant can have its own images and description. On the storefront, when a customer clicks a variant, show that variant&apos;s images and specs (price, stock, description).
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <h2 className="text-lg font-semibold text-white">
+              {formData.hasVariants ? 'Product Variants' : 'Product Variants (Optional)'}
+            </h2>
+            {formData.hasVariants ? (
+              <p className="text-sm text-amber-300">
+                With variants on, <strong>description</strong>, <strong>price</strong>, <strong>stock</strong> and <strong>images</strong> are taken from each variant below. The shop and Firebase use <code className="bg-gray-700 px-1 rounded">hasVariants</code> and <code className="bg-gray-700 px-1 rounded">subProducts</code> for smooth integration.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400">
+                Each variant can have its own images and description. On the storefront, when a customer clicks a variant, show that variant&apos;s images and specs (price, stock, description).
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <input value={newSubProduct.name} onChange={(e) => setNewSubProduct((p) => ({ ...p, name: e.target.value }))} placeholder="Variant name" className="admin-input" />
               <input value={newSubProduct.sku} onChange={(e) => setNewSubProduct((p) => ({ ...p, sku: e.target.value }))} placeholder="SKU" className="admin-input" />
               <input type="number" value={newSubProduct.price} onChange={(e) => setNewSubProduct((p) => ({ ...p, price: e.target.value }))} placeholder="Price" step="0.01" className="admin-input" />
+              <input type="number" value={newSubProduct.compareAtPrice ?? ''} onChange={(e) => setNewSubProduct((p) => ({ ...p, compareAtPrice: e.target.value }))} placeholder="Compare at price" step="0.01" className="admin-input" />
               <input type="number" value={newSubProduct.stockCount} onChange={(e) => setNewSubProduct((p) => ({ ...p, stockCount: e.target.value }))} placeholder="Stock" className="admin-input" />
             </div>
             <Button type="button" onClick={handleAddSubProduct} variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-800">
@@ -1150,7 +1289,10 @@ export default function ProductForm() {
                     <div className="flex items-center justify-between p-3 flex-wrap gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-white font-medium">{sp.name}</p>
-                        <p className="text-sm text-gray-500">SKU: {sp.sku} | ${sp.price} | Stock: {sp.stockCount}</p>
+                        <p className="text-sm text-gray-500">
+                          SKU: {sp.sku} | KSH {sp.price || '0.00'}
+                          {sp.compareAtPrice && <> (compare at {sp.compareAtPrice})</>} | Stock: {sp.stockCount}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
@@ -1162,6 +1304,7 @@ export default function ProductForm() {
                             setExpandedVariantId((prev) => (prev === sp.id ? null : sp.id))
                             if (expandedVariantId !== sp.id) {
                               setPendingVariantFiles([])
+                              setVariantPendingPreviewUrls([])
                               setVariantImageUrl('')
                             }
                           }}
@@ -1175,6 +1318,46 @@ export default function ProductForm() {
                     </div>
                     {expandedVariantId === sp.id && (
                       <div className="border-t border-gray-600 p-4 space-y-4 bg-gray-800/50">
+                        <div className="space-y-3">
+                          <p className="text-sm font-medium text-gray-300">Edit variant details</p>
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                            <input
+                              value={sp.name}
+                              onChange={(e) => updateVariant(sp.id, { name: e.target.value })}
+                              placeholder="Variant name"
+                              className="admin-input"
+                            />
+                            <input
+                              value={sp.sku}
+                              onChange={(e) => updateVariant(sp.id, { sku: e.target.value })}
+                              placeholder="SKU"
+                              className="admin-input"
+                            />
+                            <input
+                              type="number"
+                              value={sp.price}
+                              onChange={(e) => updateVariant(sp.id, { price: e.target.value })}
+                              placeholder="Price"
+                              step="0.01"
+                              className="admin-input"
+                            />
+                            <input
+                              type="number"
+                              value={sp.compareAtPrice ?? ''}
+                              onChange={(e) => updateVariant(sp.id, { compareAtPrice: e.target.value })}
+                              placeholder="Compare at price"
+                              step="0.01"
+                              className="admin-input"
+                            />
+                            <input
+                              type="number"
+                              value={sp.stockCount}
+                              onChange={(e) => updateVariant(sp.id, { stockCount: e.target.value })}
+                              placeholder="Stock"
+                              className="admin-input"
+                            />
+                          </div>
+                        </div>
                         <div>
                           <p className="text-sm font-medium text-gray-300 mb-2">Variant images (up to {MAX_VARIANT_IMAGES}) — shown when this variant is selected on the store</p>
                           <div className="flex gap-2 flex-wrap items-center">
@@ -1190,7 +1373,10 @@ export default function ProductForm() {
                               Add URL
                             </Button>
                           </div>
-                          <div className="mt-2">
+                          <div className="mt-3 space-y-2">
+                            <label className={labelClass}>
+                              Select images {isB2Configured && <span className="text-orange-400">(Backblaze B2)</span>}
+                            </label>
                             <input
                               type="file"
                               multiple
@@ -1199,22 +1385,57 @@ export default function ProductForm() {
                               disabled={!canAddMoreVariantImages}
                               className="block w-full text-sm text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-600 file:px-4 file:py-2 file:text-white file:cursor-pointer disabled:opacity-50"
                             />
-                          </div>
-                          {pendingVariantFiles.length > 0 && (
-                            <div className="mt-3 flex flex-wrap gap-2 items-center">
-                              <div className="flex gap-2 flex-wrap">
-                                {pendingVariantFiles.map((_file, idx) => (
-                                  <div key={`v-pending-${idx}`} className="relative w-24 h-24 rounded border border-orange-600/50 overflow-hidden">
-                                    <img src={pendingVariantPreviewUrls[idx]} alt="" className="w-full h-full object-cover" />
-                                  </div>
-                                ))}
+                            {pendingVariantFiles.length > 0 && (
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-gray-300">
+                                  Selected ({pendingVariantFiles.length}) — first image will usually appear first for this variant.
+                                </p>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {pendingVariantFiles.map((file, idx) => (
+                                    <div key={`variant-pending-${sp.id}-${idx}-${file.name}-${file.lastModified}`} className="relative group rounded-lg border-2 border-orange-600/50 hover:border-orange-500/70 transition-shadow">
+                                      <span className="absolute top-2 left-2 z-10 bg-gray-900/90 text-gray-300 text-xs font-medium px-2 py-0.5 rounded">
+                                        {idx + 1}
+                                      </span>
+                                      <img
+                                        src={variantPendingPreviewUrls[idx] ?? ''}
+                                        alt=""
+                                        className="w-full h-28 object-cover rounded-lg pointer-events-none"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removeVariantPending(idx)}
+                                        className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition z-10"
+                                        title="Remove"
+                                      >
+                                        <X className="h-4 w-4 text-white" />
+                                      </button>
+                                      <p className="text-xs text-gray-500 truncate mt-1 px-1">{file.name}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    onClick={() => void uploadVariantPending()}
+                                    disabled={uploading}
+                                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                                  >
+                                    {uploading
+                                      ? 'Uploading...'
+                                      : `Upload ${pendingVariantFiles.length} image${pendingVariantFiles.length === 1 ? '' : 's'}`}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    onClick={() => setPendingVariantFiles([])}
+                                    variant="outline"
+                                    className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+                                  >
+                                    Cancel all
+                                  </Button>
+                                </div>
                               </div>
-                              <Button type="button" onClick={() => void uploadVariantPending()} disabled={uploading} className="bg-orange-600 hover:bg-orange-700 text-white">
-                                {uploading ? 'Uploading...' : `Upload ${pendingVariantFiles.length}`}
-                              </Button>
-                              <Button type="button" onClick={() => setPendingVariantFiles([])} variant="outline" size="sm" className="border-gray-600 text-gray-400">Cancel</Button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                           {(sp.images?.length ?? 0) > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {(sp.images ?? []).map((img, idx) => (
