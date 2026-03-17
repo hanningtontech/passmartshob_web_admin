@@ -1,0 +1,11 @@
+# Render Blueprint: B2 upload API runs from the server/ folder.
+# After connecting this repo, add env vars in Dashboard: B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME, B2_REGION
+
+services:
+  - type: web
+    name: passmartshop-b2-upload
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    # Env vars: set B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME, B2_REGION in Render Dashboard (not here, for security)

@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+.firebase
 
 # Env files (keep real keys out of git)
 .env

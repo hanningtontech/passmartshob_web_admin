@@ -155,6 +155,17 @@ To use B2 uploads from the **deployed** admin (e.g. https://passmartshop-admin.w
 
 **Render free tier note:** The service may sleep after inactivity; the first request after sleep can be slow (cold start). For always-on, use a paid instance.
 
+**If you get "Not found"** when opening the service URL or `/api/health`, the Node server is not running. Fix it:
+
+1. In **Render Dashboard** → open your **passmartshop-b2-upload** (or whatever you named it) service.
+2. Go to **Settings** (left sidebar).
+3. Find **Root Directory**. If it’s empty or not `server`, set it to **`server`** (only that word, no path).
+4. Click **Save Changes**.
+5. Go to **Manual Deploy** → **Deploy latest commit** (or push a commit to trigger a deploy).
+6. Wait for the deploy to finish (green **Live**). Then open **https://your-service.onrender.com/api/health** again.
+
+The repo root has a Vite app; the B2 API lives in **server/** so Render must use **Root Directory: server**.
+
 ---
 
 ### Option B: Railway
