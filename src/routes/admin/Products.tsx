@@ -27,6 +27,8 @@ export default function AdminProducts() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 30
 
   const loadCategories = () => {
     if (!isFirebaseConfigured) return
@@ -55,6 +57,7 @@ export default function AdminProducts() {
           return bt - at
         })
         setProducts(list)
+        setPage(1)
       })
       .catch(() => setProducts([]))
       .finally(() => setLoading(false))
@@ -70,6 +73,11 @@ export default function AdminProducts() {
     const matchCat = !categoryFilter || p.categoryId === categoryFilter
     return matchSearch && matchCat
   })
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * PAGE_SIZE
+  const pagedProducts = filteredProducts.slice(start, start + PAGE_SIZE)
 
   const getCategoryName = (catId: string) =>
     categories.find((c) => c.id === catId)?.name ?? catId
@@ -158,7 +166,7 @@ export default function AdminProducts() {
                     </tr>
                   ))
                 ) : filteredProducts.length > 0 ? (
-                  filteredProducts.map((product) => (
+                  pagedProducts.map((product) => (
                     <tr key={product.id} className="hover:bg-gray-700/80 transition">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -210,6 +218,62 @@ export default function AdminProducts() {
             </table>
           </div>
         </div>
+
+        {!loading && filteredProducts.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              Showing <span className="text-gray-300 font-medium">{start + 1}</span>–
+              <span className="text-gray-300 font-medium">{Math.min(start + PAGE_SIZE, filteredProducts.length)}</span> of{' '}
+              <span className="text-gray-300 font-medium">{filteredProducts.length}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage(1)}
+                disabled={safePage === 1}
+              >
+                First
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
+                Prev
+              </Button>
+              <span className="text-xs text-gray-400 px-2">
+                Page <span className="text-gray-200 font-medium">{safePage}</span> /{' '}
+                <span className="text-gray-200 font-medium">{totalPages}</span>
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
+                Next
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+              >
+                Last
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   )

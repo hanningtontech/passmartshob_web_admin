@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Edit, Trash2, Settings, Tags } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AdminLayout from '@/components/AdminLayout'
 import { toast } from 'sonner'
+import { db, collection, isFirebaseConfigured } from '@/firebase'
+import { getDocs, query, where, orderBy } from 'firebase/firestore'
 
 type ProductType = {
-  id: number
+  id: string
   name: string
   slug: string
   description: string
@@ -15,12 +17,48 @@ type ProductType = {
 }
 
 export default function AdminProductTypes() {
-  const [productTypes, setProductTypes] = useState<ProductType[]>([
-    { id: 1, name: 'Electronics', slug: 'electronics', description: 'Electronic devices and gadgets', fieldCount: 5, active: true },
-    { id: 2, name: 'Appliances', slug: 'appliances', description: 'Home appliances', fieldCount: 3, active: true },
-  ])
+  const [productTypes, setProductTypes] = useState<ProductType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 30
 
-  const handleDelete = (typeId: number, name: string) => {
+  const load = () => {
+    if (!isFirebaseConfigured) {
+      setProductTypes([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    // Collection name assumption: 'productTypes'
+    // Documents should include: name, slug, description, fieldCount, active
+    const q = query(
+      collection(db, 'productTypes'),
+      where('active', '==', true),
+      orderBy('name', 'asc')
+    )
+    getDocs(q)
+      .then((snap) => {
+        const list = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<ProductType, 'id'>),
+        }))
+        setProductTypes(list)
+        setPage(1)
+      })
+      .catch(() => setProductTypes([]))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const totalPages = Math.max(1, Math.ceil(productTypes.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * PAGE_SIZE
+  const pagedTypes = useMemo(() => productTypes.slice(start, start + PAGE_SIZE), [productTypes, start])
+
+  const handleDelete = (typeId: string, name: string) => {
     if (confirm(`Delete product type "${name}"?`)) {
       setProductTypes((prev) => prev.filter((pt) => pt.id !== typeId))
       toast.success('Product type deleted')
@@ -56,7 +94,7 @@ export default function AdminProductTypes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {productTypes.map((type) => (
+                {pagedTypes.map((type) => (
                   <tr key={type.id} className="hover:bg-gray-700/80 transition-colors">
                     <td className="px-6 py-4">
                       <span className="font-medium text-white">{type.name}</span>
@@ -119,6 +157,33 @@ export default function AdminProductTypes() {
                   Create Product Type
                 </Button>
               </Link>
+            </div>
+          </div>
+        )}
+
+        {!loading && productTypes.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              Showing <span className="text-gray-300 font-medium">{start + 1}</span>–
+              <span className="text-gray-300 font-medium">{Math.min(start + PAGE_SIZE, productTypes.length)}</span> of{' '}
+              <span className="text-gray-300 font-medium">{productTypes.length}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage(1)} disabled={safePage === 1}>
+                First
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
+                Prev
+              </Button>
+              <span className="text-xs text-gray-400 px-2">
+                Page <span className="text-gray-200 font-medium">{safePage}</span> / <span className="text-gray-200 font-medium">{totalPages}</span>
+              </span>
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
+                Next
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>
+                Last
+              </Button>
             </div>
           </div>
         )}

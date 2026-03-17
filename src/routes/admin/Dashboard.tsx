@@ -14,9 +14,7 @@ import {
 import AdminLayout from '@/components/AdminLayout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { db, collection, isFirebaseConfigured } from '@/firebase'
-import { getCountFromServer, getDocs, query, orderBy } from 'firebase/firestore'
-import { normalizePaymentStatus } from '@/types/order'
-
+import { getAggregateFromServer, getCountFromServer, query, orderBy, where, sum } from 'firebase/firestore'
 const INITIAL_STATS = {
   totalCategories: 0,
   totalProducts: 0,
@@ -37,23 +35,22 @@ export default function AdminDashboard() {
       try {
         const catQ = query(collection(db, 'categories'), orderBy('displayOrder', 'asc'))
         const prodQ = query(collection(db, 'products'))
-        const [catSnap, prodSnap, ordersSnap] = await Promise.all([
+        const ordersQ = query(collection(db, 'orders'))
+        const completedOrdersQ = query(collection(db, 'orders'), where('paymentStatus', '==', 'completed'))
+        const [catSnap, prodSnap, ordersCountSnap, revenueSnap] = await Promise.all([
           getCountFromServer(catQ),
           getCountFromServer(prodQ),
-          getDocs(collection(db, 'orders')),
+          getCountFromServer(ordersQ),
+          getAggregateFromServer(completedOrdersQ, { totalRevenue: sum('total') }),
         ])
-        const orders = ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        const completedOrders = orders.filter(
-          (o) => normalizePaymentStatus((o as { paymentStatus?: unknown }).paymentStatus) === 'completed'
-        )
-        const totalRevenueKsh = completedOrders.reduce((sum, o) => {
-          const t = (o as { total?: number }).total
-          return sum + (typeof t === 'number' ? t : 0)
-        }, 0)
+        // Note: revenue uses Firestore aggregate sum for paymentStatus == 'completed'.
+        // If your storefront stores a different status shape, align it so 'completed' is stored exactly.
+        const rawRevenue = revenueSnap.data().totalRevenue
+        const totalRevenueKsh = typeof rawRevenue === 'number' ? rawRevenue : 0
         setStats({
           totalCategories: catSnap.data().count,
           totalProducts: prodSnap.data().count,
-          totalOrders: orders.length,
+          totalOrders: ordersCountSnap.data().count,
           totalRevenue: totalRevenueKsh,
         })
       } catch {

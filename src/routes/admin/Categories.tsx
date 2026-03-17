@@ -61,6 +61,8 @@ export default function AdminCategories() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   /** Product count per category ID (direct assignment only; excludes children) */
   const [productCountByCategoryId, setProductCountByCategoryId] = useState<Record<string, number>>({})
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 30
 
   const load = () => {
     if (!isFirebaseConfigured) {
@@ -150,6 +152,11 @@ export default function AdminCategories() {
         category.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : flattenForFilter(tree)
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * PAGE_SIZE
+  const pagedFiltered = filtered.slice(start, start + PAGE_SIZE)
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return
@@ -320,7 +327,10 @@ export default function AdminCategories() {
             type="text"
             placeholder="Search categories..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setPage(1)
+            }}
             className="w-full bg-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
         </div>
@@ -359,7 +369,7 @@ export default function AdminCategories() {
                       </td>
                     </tr>
                     {searchQuery.trim() ? (
-                      filtered.map(({ category, depth }) => (
+                      pagedFiltered.map(({ category, depth }) => (
                         <Fragment key={category.id}>
                           <tr className="hover:bg-gray-700/80 transition">
                             <td className="px-6 py-4 text-white font-medium" style={{ paddingLeft: `${16 + depth * 20}px` }}>
@@ -399,7 +409,31 @@ export default function AdminCategories() {
                         </Fragment>
                       ))
                     ) : (
-                      renderTreeRows(tree)
+                      pagedFiltered.map(({ category, depth }) => (
+                        <tr key={category.id} className="hover:bg-gray-700/80 transition">
+                          <td className="px-6 py-4 text-white font-medium" style={{ paddingLeft: `${16 + depth * 20}px` }}>
+                            {depth > 0 && <span className="text-gray-500 mr-2">↳</span>}
+                            {category.name}
+                          </td>
+                          <td className="px-6 py-4 text-gray-400">{category.slug}</td>
+                          <td className="px-6 py-4 text-gray-400">{category.displayOrder}</td>
+                          <td className="px-6 py-4 text-gray-400">
+                            <span className="bg-gray-700 text-gray-300 px-3 py-1 rounded-full text-sm">{productCountByCategoryId[category.id] ?? 0}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-2 flex-wrap">
+                              <Button size="sm" variant="outline" className="bg-gray-700 hover:bg-gray-600 border-gray-600 text-gray-300" title="Add subcategory" onClick={() => openSubcategoryForm(category.id)}>
+                                <FolderPlus className="h-4 w-4 mr-1" />
+                                Add subcategory
+                              </Button>
+                              <Link to={`/admin/categories/${category.id}/edit`}>
+                                <Button size="sm" variant="outline" className="bg-gray-700 hover:bg-gray-600 border-gray-600 text-gray-300"><Edit className="h-4 w-4" /></Button>
+                              </Link>
+                              <Button size="sm" variant="outline" className="bg-red-900/30 hover:bg-red-800/40 border-red-600 text-red-400" onClick={() => void handleDelete(category.id, category.name)}><Trash2 className="h-4 w-4" /></Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </>
                 ) : (
@@ -413,6 +447,33 @@ export default function AdminCategories() {
             </table>
           </div>
         </div>
+
+        {!loading && filtered.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              Showing <span className="text-gray-300 font-medium">{start + 1}</span>–
+              <span className="text-gray-300 font-medium">{Math.min(start + PAGE_SIZE, filtered.length)}</span> of{' '}
+              <span className="text-gray-300 font-medium">{filtered.length}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage(1)} disabled={safePage === 1}>
+                First
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
+                Prev
+              </Button>
+              <span className="text-xs text-gray-400 px-2">
+                Page <span className="text-gray-200 font-medium">{safePage}</span> / <span className="text-gray-200 font-medium">{totalPages}</span>
+              </span>
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
+                Next
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>
+                Last
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   )

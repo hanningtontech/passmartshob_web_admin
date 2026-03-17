@@ -37,6 +37,8 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState<(FirestoreOrder & { id: string })[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 30
 
   const loadOrders = () => {
     if (!isFirebaseConfigured) {
@@ -58,6 +60,7 @@ export default function AdminOrders() {
           return bt - at
         })
         setOrders(list)
+        setPage(1)
       })
       .catch((err) => {
         console.error('Failed to load orders:', err)
@@ -72,6 +75,11 @@ export default function AdminOrders() {
   useEffect(() => {
     loadOrders()
   }, [])
+
+  const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * PAGE_SIZE
+  const pagedOrders = orders.slice(start, start + PAGE_SIZE)
 
   return (
     <AdminLayout>
@@ -141,7 +149,7 @@ export default function AdminOrders() {
                     </tr>
                   ))
                 ) : orders.length > 0 ? (
-                  orders.map((order) => {
+                  pagedOrders.map((order) => {
                     const status = normalizePaymentStatus(order.paymentStatus)
                     const needsAttention = order.paymentMethod === 'M-Pesa' && status === 'awaiting_verification'
                     return (
@@ -185,6 +193,62 @@ export default function AdminOrders() {
             </table>
           </div>
         </div>
+
+        {!loading && !loadError && orders.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              Showing <span className="text-gray-300 font-medium">{start + 1}</span>–
+              <span className="text-gray-300 font-medium">{Math.min(start + PAGE_SIZE, orders.length)}</span> of{' '}
+              <span className="text-gray-300 font-medium">{orders.length}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage(1)}
+                disabled={safePage === 1}
+              >
+                First
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
+                Prev
+              </Button>
+              <span className="text-xs text-gray-400 px-2">
+                Page <span className="text-gray-200 font-medium">{safePage}</span> /{' '}
+                <span className="text-gray-200 font-medium">{totalPages}</span>
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
+                Next
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+              >
+                Last
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   )

@@ -171,13 +171,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <h2 className="text-2xl font-bold text-white">passmartshop-admin</h2>
             <p className="text-xs text-gray-400 mt-1">Manage your store efficiently</p>
           </div>
-          <Link
-            to="/"
+          <a
+            href="https://passmartshop.com/"
+            target="_blank"
+            rel="noreferrer"
             className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors shrink-0 font-medium text-sm"
           >
             View Store
             <ChevronRight size={16} />
-          </Link>
+          </a>
         </header>
 
         <main className="flex-1 overflow-auto bg-gray-900">
